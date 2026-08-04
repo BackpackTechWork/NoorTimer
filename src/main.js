@@ -53,6 +53,7 @@ const DEFAULT_SETTINGS = {
 app.setName("NoorTime");
 
 const PRAYER_KEYS = new Set(["Fajr", "Dhuhr", "Asr", "Maghrib", "Isha"]);
+const ACTIVE_PRAYER_WINDOW_MS = 60 * 60 * 1000;
 const DISPLAY_EVENTS = [
     {
         key: "Fajr",
@@ -209,6 +210,9 @@ function normalizeEvents(timings, settings) {
             ...event,
             time: stripTime(time),
             date: date ? date.toISOString() : null,
+            activeUntil: date
+                ? new Date(date.getTime() + ACTIVE_PRAYER_WINDOW_MS).toISOString()
+                : null,
             alertAt,
         };
     }).filter((event) => event.time && event.date);
@@ -222,8 +226,6 @@ function getNextEvent(events) {
         .map((event) => ({ ...event, ts: new Date(event.date).getTime() }))
         .filter((event) => event.ts > now)
         .sort((a, b) => a.ts - b.ts);
-    if (upcoming[0]) return upcoming[0];
-
     const firstTomorrow = events
         .map((event) => {
             const nextDate = new Date(
@@ -232,12 +234,52 @@ function getNextEvent(events) {
             return {
                 ...event,
                 date: nextDate.toISOString(),
+                activeUntil: new Date(
+                    nextDate.getTime() + ACTIVE_PRAYER_WINDOW_MS,
+                ).toISOString(),
                 ts: nextDate.getTime(),
             };
         })
         .sort((a, b) => a.ts - b.ts)[0];
+    const countdownEvent = upcoming[0] || firstTomorrow || null;
 
-    return firstTomorrow || null;
+    const active = events
+        .map((event) => ({
+            ...event,
+            ts: new Date(event.date).getTime(),
+            activeUntilTs: new Date(event.activeUntil).getTime(),
+        }))
+        .filter(
+            (event) =>
+                event.ts <= now &&
+                now < event.activeUntilTs &&
+                Number.isFinite(event.activeUntilTs),
+        )
+        .sort((a, b) => b.ts - a.ts)[0];
+
+    if (active) {
+        return {
+            ...active,
+            isActivePrayer: true,
+            countdownDate: countdownEvent?.date || active.date,
+        };
+    }
+
+    if (upcoming[0]) {
+        return {
+            ...upcoming[0],
+            isActivePrayer: false,
+            countdownDate: upcoming[0].date,
+        };
+    }
+
+    return firstTomorrow
+        ? {
+              ...firstTomorrow,
+              isActivePrayer: false,
+              countdownDate: firstTomorrow.date,
+          }
+        : null;
 }
 
 function nextInstance(event) {
@@ -247,6 +289,9 @@ function nextInstance(event) {
     return {
         ...event,
         date: nextDate.toISOString(),
+        activeUntil: new Date(
+            nextDate.getTime() + ACTIVE_PRAYER_WINDOW_MS,
+        ).toISOString(),
         alertAt: new Date(
             nextDate.getTime() - state.settings.alertLeadMinutes * 60 * 1000,
         ).toISOString(),
@@ -385,13 +430,34 @@ function scheduleAlerts() {
     clearAlerts();
 
     const now = Date.now();
+    for (const event of state.events.filter((item) => PRAYER_KEYS.has(item.key))) {
+        const startsAt = new Date(event.date).getTime();
+        const activeUntil = new Date(event.activeUntil).getTime();
+        const activeUntilDelay = activeUntil - now;
+
+        if (
+            startsAt <= now &&
+            activeUntilDelay > 0 &&
+            activeUntilDelay <= 24 * 60 * 60 * 1000
+        ) {
+            alertTimers.push(
+                setTimeout(() => {
+                    updateTrayTitle();
+                    broadcastState();
+                }, activeUntilDelay),
+            );
+        }
+    }
+
     for (const event of state.events
         .filter((item) => PRAYER_KEYS.has(item.key))
         .map(nextInstance)) {
         const alertAt = new Date(event.alertAt).getTime();
         const startsAt = new Date(event.date).getTime();
+        const activeUntil = new Date(event.activeUntil).getTime();
         const reminderDelay = alertAt - now;
         const prayerDelay = startsAt - now;
+        const activeUntilDelay = activeUntil - now;
 
         if (reminderDelay > 0 && reminderDelay <= 24 * 60 * 60 * 1000) {
             alertTimers.push(
@@ -419,6 +485,15 @@ function scheduleAlerts() {
                     }
                     refreshPrayerTimes();
                 }, prayerDelay),
+            );
+        }
+
+        if (activeUntilDelay > 0 && activeUntilDelay <= 24 * 60 * 60 * 1000) {
+            alertTimers.push(
+                setTimeout(() => {
+                    updateTrayTitle();
+                    broadcastState();
+                }, activeUntilDelay),
             );
         }
     }

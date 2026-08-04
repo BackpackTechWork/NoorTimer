@@ -47,6 +47,15 @@ function formatCountdown(dateIso) {
     return `${String(hours).padStart(2, "0")}h ${String(minutes).padStart(2, "0")}m ${String(seconds).padStart(2, "0")}s`;
 }
 
+function countdownTarget(event) {
+    return event?.countdownDate || event?.date;
+}
+
+function countdownLabel(event) {
+    if (event) return "Next prayer in";
+    return "Next prayer in";
+}
+
 function eventDescriptor(event) {
     const labels = {
         prayer: "Prayer time",
@@ -60,8 +69,9 @@ function render(state) {
     $("#nextLabel").textContent = next?.label || "Ready";
     $("#nextTime").textContent = next ? formatTime12(next.time) : "--:--";
     $("#nextIcon").innerHTML = icons[next?.icon || "moon-star"];
+    $("#countdownLabel").textContent = countdownLabel(next);
     $("#countdown").textContent = next
-        ? formatCountdown(next.date)
+        ? formatCountdown(countdownTarget(next))
         : "No more events today";
 
     ensureSelectOption($("#country"), state.settings.country);
@@ -104,7 +114,7 @@ function render(state) {
     ticker = setInterval(() => {
         if (currentState?.nextEvent)
             $("#countdown").textContent = formatCountdown(
-                currentState.nextEvent.date,
+                countdownTarget(currentState.nextEvent),
             );
     }, 1000);
 }
