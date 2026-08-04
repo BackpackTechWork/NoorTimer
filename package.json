@@ -1,0 +1,39 @@
+{
+    "name": "noortime-menubar",
+    "version": "1.0.0",
+    "description": "A macOS menu bar salah timer powered by AlAdhan.",
+    "main": "src/main.js",
+    "type": "commonjs",
+    "scripts": {
+        "start": "electron .",
+        "dist": "electron-builder --mac",
+        "build": "node scripts/check.js",
+        "lint": "node scripts/check.js"
+    },
+    "build": {
+        "appId": "com.mubarakalishah.noortime",
+        "productName": "NoorTime",
+        "afterPack": "scripts/after-pack.js",
+        "icon": "build/icon.png",
+        "mac": {
+            "icon": "build/icon.png",
+            "extendInfo": {
+                "LSUIElement": true,
+                "NSLocationUsageDescription": "NoorTime uses your location to configure local prayer times.",
+                "NSLocationWhenInUseUsageDescription": "NoorTime uses your location to configure local prayer times.",
+                "NSLocationAlwaysAndWhenInUseUsageDescription": "NoorTime uses your location to configure local prayer times."
+            }
+        }
+    },
+    "keywords": [
+        "electron",
+        "prayer",
+        "menubar"
+    ],
+    "author": "",
+    "license": "MIT",
+    "devDependencies": {
+        "electron": "^43.2.0",
+        "electron-builder": "^26.15.3"
+    }
+}
