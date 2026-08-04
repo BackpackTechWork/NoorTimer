@@ -1,12 +1,14 @@
 {
     "name": "noortime-menubar",
     "version": "1.0.0",
-    "description": "A macOS menu bar salah timer powered by AlAdhan.",
+    "description": "A desktop salah timer for the macOS menu bar and Windows system tray powered by AlAdhan.",
     "main": "src/main.js",
     "type": "commonjs",
     "scripts": {
         "start": "electron .",
-        "dist": "electron-builder --mac",
+        "dist": "electron-builder",
+        "dist:mac": "electron-builder --mac",
+        "dist:win": "electron-builder --win",
         "build": "node scripts/check.js",
         "lint": "node scripts/check.js"
     },
@@ -23,6 +25,22 @@
                 "NSLocationWhenInUseUsageDescription": "NoorTime uses your location to configure local prayer times.",
                 "NSLocationAlwaysAndWhenInUseUsageDescription": "NoorTime uses your location to configure local prayer times."
             }
+        },
+        "win": {
+            "icon": "build/icon.ico",
+            "target": [
+                {
+                    "target": "nsis",
+                    "arch": [
+                        "x64"
+                    ]
+                }
+            ]
+        },
+        "nsis": {
+            "oneClick": false,
+            "perMachine": false,
+            "allowToChangeInstallationDirectory": true
         }
     },
     "keywords": [

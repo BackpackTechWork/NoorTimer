@@ -1,11 +1,13 @@
 const {
     app,
     BrowserWindow,
+    Menu,
     Tray,
     nativeImage,
     ipcMain,
     Notification,
     nativeTheme,
+    screen,
     session,
     shell,
 } = require("electron");
@@ -39,6 +41,7 @@ const TRAY_LOGO_DARK_PATH = path.join(
     "brand",
     "logo-menubar-dark.png",
 );
+const IS_MAC = process.platform === "darwin";
 
 const DEFAULT_SETTINGS = {
     city: "Kuala Lumpur",
@@ -211,7 +214,9 @@ function normalizeEvents(timings, settings) {
             time: stripTime(time),
             date: date ? date.toISOString() : null,
             activeUntil: date
-                ? new Date(date.getTime() + ACTIVE_PRAYER_WINDOW_MS).toISOString()
+                ? new Date(
+                      date.getTime() + ACTIVE_PRAYER_WINDOW_MS,
+                  ).toISOString()
                 : null,
             alertAt,
         };
@@ -397,7 +402,9 @@ async function reverseGeocode({ latitude, longitude }) {
     const country = address.country;
 
     if (!city || !country) {
-        throw new Error("Could not detect city and country from this location.");
+        throw new Error(
+            "Could not detect city and country from this location.",
+        );
     }
 
     return { city, country };
@@ -430,7 +437,9 @@ function scheduleAlerts() {
     clearAlerts();
 
     const now = Date.now();
-    for (const event of state.events.filter((item) => PRAYER_KEYS.has(item.key))) {
+    for (const event of state.events.filter((item) =>
+        PRAYER_KEYS.has(item.key),
+    )) {
         const startsAt = new Date(event.date).getTime();
         const activeUntil = new Date(event.activeUntil).getTime();
         const activeUntilDelay = activeUntil - now;
@@ -547,7 +556,7 @@ function createPanelWindow() {
         resizable: false,
         fullscreenable: false,
         skipTaskbar: true,
-        vibrancy: "sidebar",
+        vibrancy: IS_MAC ? "sidebar" : undefined,
         backgroundColor: "#fff",
         icon: APP_LOGO_PATH,
         webPreferences: {
@@ -604,15 +613,49 @@ function showPanel() {
 
     const trayBounds = tray.getBounds();
     const windowBounds = panelWindow.getBounds();
-    panelWindow.setPosition(
-        Math.round(
-            trayBounds.x + trayBounds.width / 2 - windowBounds.width / 2,
-        ),
-        Math.round(trayBounds.y + trayBounds.height + 8),
+    const display = screen.getDisplayNearestPoint({
+        x: Math.round(trayBounds.x + trayBounds.width / 2),
+        y: Math.round(trayBounds.y + trayBounds.height / 2),
+    });
+    const workArea = display.workArea;
+    const desiredX = Math.round(
+        trayBounds.x + trayBounds.width / 2 - windowBounds.width / 2,
     );
+    const opensBelow =
+        trayBounds.y + trayBounds.height + windowBounds.height <=
+        workArea.y + workArea.height;
+    const desiredY = opensBelow
+        ? trayBounds.y + trayBounds.height + 8
+        : trayBounds.y - windowBounds.height - 8;
+    const x = Math.min(
+        Math.max(desiredX, workArea.x),
+        workArea.x + workArea.width - windowBounds.width,
+    );
+    const y = Math.min(
+        Math.max(Math.round(desiredY), workArea.y),
+        workArea.y + workArea.height - windowBounds.height,
+    );
+
+    panelWindow.setPosition(Math.round(x), Math.round(y));
     panelWindow.show();
     panelWindow.focus();
     broadcastState();
+}
+
+function createTrayMenu() {
+    return Menu.buildFromTemplate([
+        {
+            label: "Open NoorTime",
+            click: showPanel,
+        },
+        {
+            type: "separator",
+        },
+        {
+            label: "Quit",
+            click: () => app.quit(),
+        },
+    ]);
 }
 
 function openPermissionSetup() {
@@ -644,7 +687,7 @@ function showNotification(options) {
         ...options,
     });
     notification.on("failed", (_event, error) => {
-        state.error = error || "macOS blocked the notification.";
+        state.error = error || "The operating system blocked the notification.";
         broadcastState();
     });
     notification.show();
@@ -678,9 +721,7 @@ ipcMain.handle("sound:test", () => {
         body: `Notifications are enabled for ${state.settings.city}.`,
     });
 
-    return result.ok
-        ? { ok: true, reason: "Test notification sent." }
-        : result;
+    return result.ok ? { ok: true, reason: "Test notification sent." } : result;
 });
 ipcMain.handle("app:openApi", () =>
     shell.openExternal("https://aladhan.com/prayer-times-api"),
@@ -690,29 +731,32 @@ ipcMain.handle("app:quit", () => {
     return true;
 });
 
-app.whenReady().then(async () => {
-    await loadSettings();
-    if (app.dock) app.dock.hide();
-    allowAppPermissions();
-    createPanelWindow();
-    createSoundWindow();
-    tray = new Tray(createTrayIcon());
-    tray.setToolTip("NoorTime");
-    tray.on("click", togglePanel);
-    nativeTheme.on("updated", () => {
-        if (tray) tray.setImage(createTrayIcon());
-    });
-    await refreshPrayerTimes();
-    if (panelWindow.webContents.isLoading()) {
-        panelWindow.webContents.once("did-finish-load", () => {
-            setTimeout(openPermissionSetup, 500);
+app.whenReady()
+    .then(async () => {
+        await loadSettings();
+        if (IS_MAC && app.dock) app.dock.hide();
+        allowAppPermissions();
+        createPanelWindow();
+        createSoundWindow();
+        tray = new Tray(createTrayIcon());
+        tray.setToolTip("NoorTime");
+        tray.on("click", togglePanel);
+        if (!IS_MAC) tray.setContextMenu(createTrayMenu());
+        nativeTheme.on("updated", () => {
+            if (tray) tray.setImage(createTrayIcon());
         });
-    } else {
-        setTimeout(openPermissionSetup, 500);
-    }
-}).catch((error) => {
-    console.error("Failed to start NoorTime:", error);
-});
+        await refreshPrayerTimes();
+        if (panelWindow.webContents.isLoading()) {
+            panelWindow.webContents.once("did-finish-load", () => {
+                setTimeout(openPermissionSetup, 500);
+            });
+        } else {
+            setTimeout(openPermissionSetup, 500);
+        }
+    })
+    .catch((error) => {
+        console.error("Failed to start NoorTime:", error);
+    });
 
 app.on("window-all-closed", (event) => event.preventDefault());
 app.on("before-quit", clearAlerts);

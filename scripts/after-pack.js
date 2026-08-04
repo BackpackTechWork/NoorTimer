@@ -2,7 +2,7 @@ const { execFileSync } = require("child_process");
 const path = require("path");
 
 exports.default = async function afterPack(context) {
-    if (process.platform !== "darwin") return;
+    if (context.electronPlatformName !== "darwin") return;
 
     const appName = `${context.packager.appInfo.productFilename}.app`;
     const appPath = path.join(context.appOutDir, appName);

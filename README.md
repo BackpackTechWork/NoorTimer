@@ -1,6 +1,6 @@
 # NoorTime
 
-NoorTime is a lightweight macOS menu bar salah timer. It keeps the next prayer time visible in the menu bar, shows a compact prayer schedule panel, plays a gentle chime, and sends local macOS notifications for prayer reminders.
+NoorTime is a lightweight desktop salah timer for the macOS menu bar and Windows system tray. It keeps the next prayer time visible, shows a compact prayer schedule panel, plays a gentle chime, and sends local desktop notifications for prayer reminders.
 
 This project is open source and powered by Backpack.
 
@@ -9,20 +9,20 @@ This project is open source and powered by Backpack.
 | Platform | Status | Notes |
 | --- | --- | --- |
 | macOS | Supported | Current release ships as a `.dmg` installer for Apple Silicon Macs. |
-| Windows | Coming soon | Planned desktop release. |
+| Windows | Supported | Windows release ships as an NSIS `.exe` installer. |
 | Mobile | Coming soon | Planned mobile experience. |
 
 ## What Is This?
 
-NoorTime is built for Muslims who want a simple desktop reminder without keeping a full window open. It runs as a macOS menu bar app, so it stays out of the Dock and can be opened from the menu bar when needed.
+NoorTime is built for Muslims who want a simple desktop reminder without keeping a full window open. It runs from the macOS menu bar or Windows system tray, so it stays out of the way and can be opened when needed.
 
 Core features:
 
-- Menu bar display for the next prayer
+- Menu bar/system tray display for the next prayer
 - Daily salah timeline
 - Configurable city, country, timezone, and calculation method
 - Optional sound reminders
-- Optional macOS notifications
+- Optional desktop notifications
 - Test button for checking sound and notification behavior
 - In-app Quit button
 
@@ -30,19 +30,19 @@ Core features:
 
 NoorTime is for:
 
-- Muslims who work on macOS and want prayer reminders on desktop
+- Muslims who work on macOS or Windows and want prayer reminders on desktop
 - People who prefer a quiet menu bar utility over a full-screen app
-- Developers who want a small Electron example for tray apps, local notifications, and packaged macOS agent apps
+- Developers who want a small Electron example for tray apps, local notifications, and packaged desktop apps
 
 ## Tech Stack
 
 | Area | Technology | Purpose |
 | --- | --- | --- |
-| Desktop runtime | ![Electron](https://img.shields.io/badge/Electron-47848F?style=for-the-badge&logo=electron&logoColor=white) | Builds the macOS menu bar app |
+| Desktop runtime | ![Electron](https://img.shields.io/badge/Electron-47848F?style=for-the-badge&logo=electron&logoColor=white) | Builds the menu bar/system tray app |
 | Main process | ![Node.js](https://img.shields.io/badge/Node.js-339933?style=for-the-badge&logo=nodedotjs&logoColor=white) ![CommonJS](https://img.shields.io/badge/CommonJS-111827?style=for-the-badge&logo=javascript&logoColor=F7DF1E) | Handles tray, windows, timers, notifications, and settings |
 | UI | ![HTML5](https://img.shields.io/badge/HTML5-E34F26?style=for-the-badge&logo=html5&logoColor=white) ![CSS3](https://img.shields.io/badge/CSS3-1572B6?style=for-the-badge&logo=css3&logoColor=white) ![JavaScript](https://img.shields.io/badge/JavaScript-F7DF1E?style=for-the-badge&logo=javascript&logoColor=111827) | Renders the menu bar panel |
 | Prayer data | ![AlAdhan API](https://img.shields.io/badge/AlAdhan_API-0F766E?style=for-the-badge&logo=icloud&logoColor=white) | Fetches prayer timings by city and country |
-| Packaging | ![electron-builder](https://img.shields.io/badge/electron--builder-1B2A4A?style=for-the-badge&logo=electron&logoColor=white) | Creates the macOS `.app`, `.dmg`, and `.zip` files |
+| Packaging | ![electron-builder](https://img.shields.io/badge/electron--builder-1B2A4A?style=for-the-badge&logo=electron&logoColor=white) | Creates macOS and Windows installers |
 | Storage | ![Local JSON](https://img.shields.io/badge/Local_JSON-6B7280?style=for-the-badge&logo=json&logoColor=white) | Saves local app settings |
 
 ## Download For Mac
@@ -60,12 +60,24 @@ Install steps:
 
 If macOS blocks the app because it is not from the App Store, open **System Settings > Privacy & Security**, then allow NoorTime from the security message.
 
+## Download For Windows
+
+The Windows installer is generated in `dist/` after running the Windows package command.
+
+Install steps:
+
+1. Open the generated `NoorTime Setup 1.0.0.exe` installer from `dist/`.
+2. Follow the installer prompts.
+3. Open **NoorTime** from the Start menu.
+4. Allow notification and location access when Windows asks.
+
 ## Folder Structure
 
 ```text
 .
 ├── build/
-│   └── icon.png                 # Packaging icon used by electron-builder
+│   ├── icon.png                 # macOS packaging icon
+│   └── icon.ico                 # Windows packaging icon
 ├── public/
 │   └── assets/                  # App, tray, and brand image assets
 ├── scripts/
@@ -123,10 +135,22 @@ Run the project check:
 npm run build
 ```
 
-Package the macOS app:
+Package the app for the current platform:
 
 ```bash
 npm run dist
+```
+
+Package the macOS app:
+
+```bash
+npm run dist:mac
+```
+
+Package the Windows app:
+
+```bash
+npm run dist:win
 ```
 
 Packaged output is generated in `dist/`.
@@ -138,13 +162,15 @@ Packaged output is generated in `dist/`.
 | `npm start` | Starts NoorTime locally with Electron |
 | `npm run build` | Checks required files and JavaScript syntax |
 | `npm run lint` | Runs the same project check |
-| `npm run dist` | Packages the macOS app |
+| `npm run dist` | Packages the app for the current platform |
+| `npm run dist:mac` | Packages the macOS app |
+| `npm run dist:win` | Packages the Windows app |
 
 ## Notes
 
 - `build/` is committed because it contains packaging input such as the app icon.
 - `dist/` is ignored because it contains generated packaged output.
-- NoorTime uses local macOS notifications, not remote push notifications.
+- NoorTime uses local desktop notifications, not remote push notifications.
 - The packaged app is configured as a macOS menu bar agent, so it does not appear in the Dock.
 
 ## License
