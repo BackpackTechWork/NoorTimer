@@ -4,6 +4,9 @@ contextBridge.exposeInMainWorld("prayerTimer", {
     getState: () => ipcRenderer.invoke("state:get"),
     saveSettings: (settings) => ipcRenderer.invoke("settings:save", settings),
     refresh: () => ipcRenderer.invoke("prayers:refresh"),
+    getTodayPrayers: () => ipcRenderer.invoke("prayersToday:get"),
+    updateTodayPrayer: (record) =>
+        ipcRenderer.invoke("prayersToday:update", record),
     requestNotifications: () => ipcRenderer.invoke("notifications:request"),
     testSound: () => ipcRenderer.invoke("sound:test"),
     reverseGeocode: (coords) => ipcRenderer.invoke("location:reverse", coords),

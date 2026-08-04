@@ -42,6 +42,14 @@ const TRAY_LOGO_DARK_PATH = path.join(
     "logo-menubar-dark.png",
 );
 const IS_MAC = process.platform === "darwin";
+const PRAYER_RECORD_COLUMNS = ["date", "prayer", "done", "updatedAt"];
+const LEGACY_PRAYER_RECORD_COLUMNS = [
+    "date",
+    "prayer",
+    "done",
+    "note",
+    "updatedAt",
+];
 
 const DEFAULT_SETTINGS = {
     city: "Kuala Lumpur",
@@ -103,13 +111,17 @@ let state = {
     timings: null,
     events: [],
     nextEvent: null,
+    todayPrayerRecords: [],
     lastUpdated: null,
     error: null,
 };
 let alertTimers = [];
+let prayerRecordCleanupTimer;
 let didOpenPermissionSetup = false;
 
 const settingsPath = () => path.join(app.getPath("userData"), "settings.json");
+const prayerRecordsPath = () =>
+    path.join(app.getPath("userData"), "today-prayers.csv");
 
 async function loadSettings() {
     try {
@@ -124,6 +136,202 @@ async function saveSettings(settings) {
     state.settings = { ...DEFAULT_SETTINGS, ...settings };
     await fs.mkdir(app.getPath("userData"), { recursive: true });
     await fs.writeFile(settingsPath(), JSON.stringify(state.settings, null, 2));
+}
+
+function localDateKey(date = new Date(), timezone = state.settings.timezone) {
+    const prayerRecordDate = new Date(date.getTime() - 2 * 60 * 60 * 1000);
+    return new Intl.DateTimeFormat("en-CA", {
+        timeZone: timezone,
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+    }).format(prayerRecordDate);
+}
+
+function escapeCsv(value) {
+    const text = String(value ?? "");
+    return /[",\n\r]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+}
+
+function parseCsvLine(line) {
+    const values = [];
+    let value = "";
+    let inQuotes = false;
+
+    for (let index = 0; index < line.length; index += 1) {
+        const char = line[index];
+        const next = line[index + 1];
+
+        if (char === '"' && inQuotes && next === '"') {
+            value += '"';
+            index += 1;
+        } else if (char === '"') {
+            inQuotes = !inQuotes;
+        } else if (char === "," && !inQuotes) {
+            values.push(value);
+            value = "";
+        } else {
+            value += char;
+        }
+    }
+
+    values.push(value);
+    return values;
+}
+
+function parseCsv(raw) {
+    const rows = [];
+    let line = "";
+    let inQuotes = false;
+
+    for (let index = 0; index < raw.length; index += 1) {
+        const char = raw[index];
+        const next = raw[index + 1];
+
+        if (char === '"' && inQuotes && next === '"') {
+            line += char + next;
+            index += 1;
+        } else if (char === '"') {
+            inQuotes = !inQuotes;
+            line += char;
+        } else if ((char === "\n" || char === "\r") && !inQuotes) {
+            if (line) rows.push(parseCsvLine(line));
+            line = "";
+            if (char === "\r" && next === "\n") index += 1;
+        } else {
+            line += char;
+        }
+    }
+
+    if (line) rows.push(parseCsvLine(line));
+    return rows;
+}
+
+function emptyPrayerRecords(date = localDateKey()) {
+    return DISPLAY_EVENTS.map((event) => ({
+        date,
+        prayer: event.key,
+        done: false,
+        updatedAt: "",
+    }));
+}
+
+async function loadPrayerRecords() {
+    const today = localDateKey();
+
+    try {
+        const raw = await fs.readFile(prayerRecordsPath(), "utf8");
+        const rows = parseCsv(raw);
+        const header = rows.shift();
+        const supportedHeader =
+            header?.join(",") === PRAYER_RECORD_COLUMNS.join(",") ||
+            header?.join(",") === LEGACY_PRAYER_RECORD_COLUMNS.join(",");
+        if (!supportedHeader) {
+            throw new Error("Prayer record CSV header is invalid.");
+        }
+
+        const byPrayer = new Map();
+        for (const row of rows) {
+            const record = Object.fromEntries(
+                header.map((column, index) => [
+                    column,
+                    row[index] || "",
+                ]),
+            );
+            if (record.date === today && PRAYER_KEYS.has(record.prayer)) {
+                byPrayer.set(record.prayer, {
+                    ...record,
+                    done: record.done === "true",
+                });
+            }
+        }
+
+        state.todayPrayerRecords = emptyPrayerRecords(today).map(
+            (record) => byPrayer.get(record.prayer) || record,
+        );
+    } catch {
+        state.todayPrayerRecords = emptyPrayerRecords(today);
+        await savePrayerRecords();
+    }
+}
+
+async function savePrayerRecords() {
+    await fs.mkdir(app.getPath("userData"), { recursive: true });
+    const rows = [
+        PRAYER_RECORD_COLUMNS.join(","),
+        ...state.todayPrayerRecords.map((record) =>
+            PRAYER_RECORD_COLUMNS.map((column) =>
+                escapeCsv(
+                    column === "done"
+                        ? String(Boolean(record.done))
+                        : record[column],
+                ),
+            ).join(","),
+        ),
+    ];
+    await fs.writeFile(prayerRecordsPath(), `${rows.join("\n")}\n`);
+}
+
+async function resetPrayerRecords() {
+    state.todayPrayerRecords = emptyPrayerRecords();
+    await savePrayerRecords();
+}
+
+async function cleanupPrayerRecordsIfStale() {
+    const today = localDateKey();
+    if (
+        !state.todayPrayerRecords?.length ||
+        state.todayPrayerRecords.some((record) => record.date !== today)
+    ) {
+        await resetPrayerRecords();
+        broadcastState();
+    }
+}
+
+function schedulePrayerRecordCleanup() {
+    if (prayerRecordCleanupTimer) clearTimeout(prayerRecordCleanupTimer);
+
+    const now = new Date();
+    const nextCleanup = new Date(now);
+    nextCleanup.setHours(2, 0, 0, 0);
+    if (nextCleanup <= now) {
+        nextCleanup.setDate(nextCleanup.getDate() + 1);
+    }
+
+    prayerRecordCleanupTimer = setTimeout(async () => {
+        await resetPrayerRecords();
+        broadcastState();
+        schedulePrayerRecordCleanup();
+    }, nextCleanup.getTime() - now.getTime());
+}
+
+async function updatePrayerRecord({ prayer, done }) {
+    if (!PRAYER_KEYS.has(prayer)) {
+        throw new Error("Unknown prayer record.");
+    }
+
+    await cleanupPrayerRecordsIfStale();
+    const today = localDateKey();
+    const existing =
+        state.todayPrayerRecords.find((record) => record.prayer === prayer) ||
+        emptyPrayerRecords(today).find((record) => record.prayer === prayer);
+
+    const nextRecord = {
+        ...existing,
+        date: today,
+        done: Boolean(done),
+        updatedAt: new Date().toISOString(),
+    };
+
+    state.todayPrayerRecords = emptyPrayerRecords(today).map((record) =>
+        record.prayer === prayer
+            ? nextRecord
+            : state.todayPrayerRecords.find((item) => item.prayer === record.prayer) ||
+              record,
+    );
+    await savePrayerRecords();
+    broadcastState();
+    return publicState();
 }
 
 function stripTime(raw) {
@@ -415,6 +623,7 @@ function publicState() {
         settings: state.settings,
         events: state.events,
         nextEvent: state.nextEvent,
+        todayPrayerRecords: state.todayPrayerRecords,
         lastUpdated: state.lastUpdated,
         error: state.error,
         date: state.date,
@@ -550,7 +759,7 @@ function updateTrayTitle() {
 function createPanelWindow() {
     panelWindow = new BrowserWindow({
         width: 420,
-        height: 680,
+        height: 760,
         show: false,
         frame: false,
         resizable: false,
@@ -697,9 +906,18 @@ function showNotification(options) {
 ipcMain.handle("state:get", () => publicState());
 ipcMain.handle("settings:save", async (_event, settings) => {
     await saveSettings({ ...state.settings, ...settings });
+    await cleanupPrayerRecordsIfStale();
+    schedulePrayerRecordCleanup();
     return refreshPrayerTimes();
 });
 ipcMain.handle("prayers:refresh", () => refreshPrayerTimes());
+ipcMain.handle("prayersToday:get", async () => {
+    await cleanupPrayerRecordsIfStale();
+    return publicState();
+});
+ipcMain.handle("prayersToday:update", (_event, record) =>
+    updatePrayerRecord(record),
+);
 ipcMain.handle("location:reverse", (_event, coords) => reverseGeocode(coords));
 ipcMain.handle("notifications:request", () =>
     showNotification({
@@ -734,6 +952,8 @@ ipcMain.handle("app:quit", () => {
 app.whenReady()
     .then(async () => {
         await loadSettings();
+        await loadPrayerRecords();
+        await cleanupPrayerRecordsIfStale();
         if (IS_MAC && app.dock) app.dock.hide();
         allowAppPermissions();
         createPanelWindow();
@@ -746,6 +966,7 @@ app.whenReady()
             if (tray) tray.setImage(createTrayIcon());
         });
         await refreshPrayerTimes();
+        schedulePrayerRecordCleanup();
         if (panelWindow.webContents.isLoading()) {
             panelWindow.webContents.once("did-finish-load", () => {
                 setTimeout(openPermissionSetup, 500);
@@ -759,4 +980,7 @@ app.whenReady()
     });
 
 app.on("window-all-closed", (event) => event.preventDefault());
-app.on("before-quit", clearAlerts);
+app.on("before-quit", () => {
+    clearAlerts();
+    if (prayerRecordCleanupTimer) clearTimeout(prayerRecordCleanupTimer);
+});

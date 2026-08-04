@@ -1,6 +1,6 @@
 # NoorTime
 
-NoorTime is a lightweight desktop salah timer for the macOS menu bar and Windows system tray. It keeps the next prayer time visible, shows a compact prayer schedule panel, plays a gentle chime, and sends local desktop notifications for prayer reminders.
+NoorTime is a lightweight desktop salah timer for the macOS menu bar and Windows system tray. It keeps the next prayer time visible, shows a compact prayer schedule panel, plays a gentle chime, sends local desktop notifications, and lets you mark today's prayers as done before the app gives you a little mom-style nudge.
 
 This project is open source and powered by Backpack.
 
@@ -20,6 +20,8 @@ Core features:
 
 - Menu bar/system tray display for the next prayer
 - Daily salah timeline
+- Today-only prayer checklist with a glowing progress bar
+- Playful encouragement and gentle scolding when prayers are missed
 - Configurable city, country, timezone, and calculation method
 - Optional sound reminders
 - Optional desktop notifications
@@ -43,7 +45,7 @@ NoorTime is for:
 | UI | ![HTML5](https://img.shields.io/badge/HTML5-E34F26?style=for-the-badge&logo=html5&logoColor=white) ![CSS3](https://img.shields.io/badge/CSS3-1572B6?style=for-the-badge&logo=css3&logoColor=white) ![JavaScript](https://img.shields.io/badge/JavaScript-F7DF1E?style=for-the-badge&logo=javascript&logoColor=111827) | Renders the menu bar panel |
 | Prayer data | ![AlAdhan API](https://img.shields.io/badge/AlAdhan_API-0F766E?style=for-the-badge&logo=icloud&logoColor=white) | Fetches prayer timings by city and country |
 | Packaging | ![electron-builder](https://img.shields.io/badge/electron--builder-1B2A4A?style=for-the-badge&logo=electron&logoColor=white) | Creates macOS and Windows installers |
-| Storage | ![Local JSON](https://img.shields.io/badge/Local_JSON-6B7280?style=for-the-badge&logo=json&logoColor=white) | Saves local app settings |
+| Storage | ![Local JSON](https://img.shields.io/badge/Local_JSON-6B7280?style=for-the-badge&logo=json&logoColor=white) ![Local CSV](https://img.shields.io/badge/Local_CSV-2F8F5B?style=for-the-badge&logo=files&logoColor=white) | Saves local app settings and today's prayer record |
 
 ## Download For Mac
 
@@ -100,12 +102,18 @@ Install steps:
 ```mermaid
 flowchart TD
     A["Launch NoorTime"] --> B["Load saved settings"]
-    B --> C["Fetch prayer timings from AlAdhan API"]
+    B --> P["Load today's local prayer checklist"]
+    P --> Q{"Past 2 AM cleanup?"}
+    Q -->|Yes| R["Reset yesterday's checklist"]
+    Q -->|No| C["Fetch prayer timings from AlAdhan API"]
+    R --> C
     C --> D["Normalize prayer events"]
     D --> E["Update menu bar title"]
     D --> F["Schedule reminders"]
     E --> G["User opens menu bar panel"]
-    G --> H["Panel shows next prayer and timeline"]
+    G --> H["Panel shows next prayer, progress, and timeline"]
+    H --> S["User checks a prayer as done"]
+    S --> T["Save today's record as local CSV"]
     F --> I["Reminder time arrives"]
     I --> J{"Sound enabled?"}
     J -->|Yes| K["Play chime"]
@@ -114,6 +122,17 @@ flowchart TD
     M -->|Yes| N["Show macOS notification"]
     M -->|No| O["Skip notification"]
 ```
+
+## Today Prayer Record
+
+The panel includes a tiny daily accountability layer:
+
+- Check a prayer directly from the timeline when it is done.
+- Watch the progress bar light up in a calm green as the day improves.
+- If a prayer time passes unchecked, NoorTime switches from friendly encouragement to a firmer mom-style reminder.
+- After all five are done, the panel winds down with a simple well-done message.
+
+The checklist is deliberately temporary. NoorTime stores it as `today-prayers.csv` in the app's private local storage, then clears it around 2:00 AM so tomorrow starts fresh.
 
 ## Getting Started
 
@@ -171,6 +190,7 @@ Packaged output is generated in `dist/`.
 - `build/` is committed because it contains packaging input such as the app icon.
 - `dist/` is ignored because it contains generated packaged output.
 - NoorTime uses local desktop notifications, not remote push notifications.
+- Today's prayer checklist is stored locally as CSV and is wiped after the day ends.
 - The packaged app is configured as a macOS menu bar agent, so it does not appear in the Dock.
 
 ## License

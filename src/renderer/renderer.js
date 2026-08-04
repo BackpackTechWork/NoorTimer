@@ -19,6 +19,14 @@ let ticker;
 let didRequestStartupPermissions = false;
 let loadingDepth = 0;
 
+const prayerLabels = {
+    Fajr: "Fajr",
+    Dhuhr: "Dhuhr",
+    Asr: "Asr",
+    Maghrib: "Maghrib",
+    Isha: "Isha",
+};
+
 function ensureSelectOption(select, value) {
     if (!value || [...select.options].some((option) => option.value === value))
         return;
@@ -63,6 +71,94 @@ function eventDescriptor(event) {
     return labels[event.type] || "Daily marker";
 }
 
+function recordForPrayer(records, prayer) {
+    return records.find((record) => record.prayer === prayer) || {};
+}
+
+function getTodayPrompt(events = [], records = []) {
+    const doneCount = records.filter((record) => record.done).length;
+    const now = Date.now();
+    const prayers = events.filter((event) => prayerLabels[event.key]);
+    const missed = prayers.filter(
+        (event) =>
+            new Date(event.date).getTime() < now &&
+            !recordForPrayer(records, event.key).done,
+    );
+    const nextUndone = prayers.find(
+        (event) =>
+            new Date(event.date).getTime() >= now &&
+            !recordForPrayer(records, event.key).done,
+    );
+    const activeDone = prayers.find((event) => {
+        const startsAt = new Date(event.date).getTime();
+        const activeUntil = new Date(event.activeUntil).getTime();
+        return (
+            startsAt <= now &&
+            now < activeUntil &&
+            recordForPrayer(records, event.key).done
+        );
+    });
+
+    if (doneCount === 5) {
+        return {
+            title: "All five done. Well done.",
+            message: "Rest easy tonight. May tomorrow be even better.",
+        };
+    }
+
+    if (activeDone) {
+        return {
+            title: `${activeDone.label} done. Keep going.`,
+            message: "Good. Do not relax too much now, the next prayer still deserves your best.",
+        };
+    }
+
+    if (!missed.length && nextUndone) {
+        return {
+            title: "Bismillah, keep your day close to salah.",
+            message: `${nextUndone.label} is next at ${formatTime12(nextUndone.time)}. Get ready before the time comes.`,
+        };
+    }
+
+    if (missed.length) {
+        const latest = missed[missed.length - 1];
+        const missedNames = missed.map((event) => event.label).join(", ");
+        let message =
+            "Astaghfirullah, how many times must I tell you? Go pray first, then come back and mark it done.";
+
+        if (missed.length === 1 && latest.key === "Fajr") {
+            message =
+                "Fajr already passed. Wake up properly, go pray now, then mark it done.";
+        } else if (missed.length === 1) {
+            message = `${latest.label} passed already. Do not delay like this, go pray now.`;
+        } else if (missed.length === 2) {
+            message = `${missedNames} both passed. Enough waiting, go settle your prayers now.`;
+        } else if (missed.length >= 4) {
+            message =
+                "Almost the whole day passed. I am not joking, leave everything and go pray.";
+        }
+
+        return {
+            title: `${latest.label} time passed. Come on.`,
+            message,
+        };
+    }
+
+    return {
+        title: "Bismillah, start your day steady.",
+        message: "Mark each prayer when it is done.",
+    };
+}
+
+function renderTodayProgress(events = [], records = []) {
+    const doneCount = records.filter((record) => record.done).length;
+    const prompt = getTodayPrompt(events, records);
+    $("#todayProgress").textContent = `${doneCount}/5`;
+    $("#todayProgressFill").style.width = `${doneCount * 20}%`;
+    $("#todayTitle").textContent = prompt.title;
+    $("#todayMessage").textContent = prompt.message;
+}
+
 function render(state) {
     currentState = state;
     const next = state.nextEvent;
@@ -85,11 +181,21 @@ function render(state) {
     $("#alertLeadMinutes").value = state.settings.alertLeadMinutes;
     $("#settingsSummary").textContent =
         `${state.settings.city}, ${state.settings.country}`;
+    renderTodayProgress(state.events, state.todayPrayerRecords || []);
 
     $("#timeline").innerHTML = state.events
         .map(
-            (event) => `
-    <article class="event ${event.key === next?.key ? "active" : ""}">
+            (event) => {
+                const record = recordForPrayer(
+                    state.todayPrayerRecords || [],
+                    event.key,
+                );
+                return `
+    <article class="event ${event.key === next?.key ? "active" : ""} ${record.done ? "done" : ""}">
+      <label class="event-check" title="Mark ${event.label} as done">
+        <input type="checkbox" data-prayer-done="${event.key}" ${record.done ? "checked" : ""} />
+        <span aria-hidden="true"></span>
+      </label>
       <div class="event-icon">${icons[event.icon] || icons["moon-star"]}</div>
       <div>
         <h2>${event.label}</h2>
@@ -97,7 +203,8 @@ function render(state) {
       </div>
       <strong>${formatTime12(event.time)}</strong>
     </article>
-  `,
+  `;
+            },
         )
         .join("");
 
@@ -129,7 +236,7 @@ function setLoading(isLoading, message = "Updating timings...") {
     $("#refreshButton").disabled = active;
     $("#testSound").disabled = active;
     for (const control of document.querySelectorAll(
-        ".settings input, .settings select, .toolbar input, .toolbar select",
+        ".settings input, .settings select, .toolbar input, .toolbar select, .timeline input",
     )) {
         control.disabled = active;
     }
@@ -225,6 +332,18 @@ $("#refreshButton").addEventListener("click", async () => {
 $("#testSound").addEventListener("click", async () => {
     const result = await window.prayerTimer.testSound();
     $("#status").textContent = result?.reason || "Test notification sent.";
+});
+$("#timeline").addEventListener("change", async (event) => {
+    const target = event.target;
+    const prayer = target.dataset.prayerDone;
+    if (!prayer) return;
+
+    const state = await window.prayerTimer.updateTodayPrayer({
+        prayer,
+        done: target.checked,
+    });
+    render(state);
+    $("#status").textContent = "Today record saved.";
 });
 $("#apiLink").addEventListener("click", () => window.prayerTimer.openApiDocs());
 $("#quitButton").addEventListener("click", () => window.prayerTimer.quit());
