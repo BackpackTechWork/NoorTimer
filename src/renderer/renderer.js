@@ -27,6 +27,15 @@ const prayerLabels = {
     Isha: "Isha",
 };
 
+const messageFieldKeys = [
+    "greeting",
+    "Fajr",
+    "Dhuhr",
+    "Asr",
+    "Maghrib",
+    "Isha",
+];
+
 function ensureSelectOption(select, value) {
     if (!value || [...select.options].some((option) => option.value === value))
         return;
@@ -75,7 +84,29 @@ function recordForPrayer(records, prayer) {
     return records.find((record) => record.prayer === prayer) || {};
 }
 
-function getTodayPrompt(events = [], records = []) {
+function customMessage(settings, key) {
+    return String(settings?.customMessages?.[key] || "").trim();
+}
+
+function collectCustomMessages() {
+    return Object.fromEntries(
+        messageFieldKeys.map((key) => {
+            const field = document.querySelector(`[data-message-field="${key}"]`);
+            return [key, field?.value.trim() || ""];
+        }),
+    );
+}
+
+function renderCustomMessageInputs(settings = {}) {
+    for (const key of messageFieldKeys) {
+        const field = document.querySelector(`[data-message-field="${key}"]`);
+        if (field && field !== document.activeElement) {
+            field.value = settings.customMessages?.[key] || "";
+        }
+    }
+}
+
+function getTodayPrompt(events = [], records = [], settings = {}) {
     const doneCount = records.filter((record) => record.done).length;
     const now = Date.now();
     const prayers = events.filter((event) => prayerLabels[event.key]);
@@ -116,26 +147,32 @@ function getTodayPrompt(events = [], records = []) {
     if (!missed.length && nextUndone) {
         return {
             title: "Bismillah, keep your day close to salah.",
-            message: `${nextUndone.label} is next at ${formatTime12(nextUndone.time)}. Get ready before the time comes.`,
+            message:
+                customMessage(settings, "greeting") ||
+                `${nextUndone.label} is next at ${formatTime12(nextUndone.time)}. Get ready before the time comes.`,
         };
     }
 
     if (missed.length) {
         const latest = missed[missed.length - 1];
         const missedNames = missed.map((event) => event.label).join(", ");
-        let message =
-            "Astaghfirullah, how many times must I tell you? Go pray first, then come back and mark it done.";
+        let message = customMessage(settings, latest.key);
 
-        if (missed.length === 1 && latest.key === "Fajr") {
+        if (!message) {
             message =
-                "Fajr already passed. Wake up properly, go pray now, then mark it done.";
-        } else if (missed.length === 1) {
-            message = `${latest.label} passed already. Do not delay like this, go pray now.`;
-        } else if (missed.length === 2) {
-            message = `${missedNames} both passed. Enough waiting, go settle your prayers now.`;
-        } else if (missed.length >= 4) {
-            message =
-                "Almost the whole day passed. I am not joking, leave everything and go pray.";
+                "Astaghfirullah, how many times must I tell you? Go pray first, then come back and mark it done.";
+
+            if (missed.length === 1 && latest.key === "Fajr") {
+                message =
+                    "Fajr already passed. Wake up properly, go pray now, then mark it done.";
+            } else if (missed.length === 1) {
+                message = `${latest.label} passed already. Do not delay like this, go pray now.`;
+            } else if (missed.length === 2) {
+                message = `${missedNames} both passed. Enough waiting, go settle your prayers now.`;
+            } else if (missed.length >= 4) {
+                message =
+                    "Almost the whole day passed. I am not joking, leave everything and go pray.";
+            }
         }
 
         return {
@@ -146,13 +183,15 @@ function getTodayPrompt(events = [], records = []) {
 
     return {
         title: "Bismillah, start your day steady.",
-        message: "Mark each prayer when it is done.",
+        message:
+            customMessage(settings, "greeting") ||
+            "Mark each prayer when it is done.",
     };
 }
 
-function renderTodayProgress(events = [], records = []) {
+function renderTodayProgress(events = [], records = [], settings = {}) {
     const doneCount = records.filter((record) => record.done).length;
-    const prompt = getTodayPrompt(events, records);
+    const prompt = getTodayPrompt(events, records, settings);
     $("#todayProgress").textContent = `${doneCount}/5`;
     $("#todayProgressFill").style.width = `${doneCount * 20}%`;
     $("#todayTitle").textContent = prompt.title;
@@ -181,7 +220,12 @@ function render(state) {
     $("#alertLeadMinutes").value = state.settings.alertLeadMinutes;
     $("#settingsSummary").textContent =
         `${state.settings.city}, ${state.settings.country}`;
-    renderTodayProgress(state.events, state.todayPrayerRecords || []);
+    renderCustomMessageInputs(state.settings);
+    renderTodayProgress(
+        state.events,
+        state.todayPrayerRecords || [],
+        state.settings,
+    );
 
     $("#timeline").innerHTML = state.events
         .map(
@@ -236,7 +280,7 @@ function setLoading(isLoading, message = "Updating timings...") {
     $("#refreshButton").disabled = active;
     $("#testSound").disabled = active;
     for (const control of document.querySelectorAll(
-        ".settings input, .settings select, .toolbar input, .toolbar select, .timeline input",
+        ".settings input, .settings select, .toolbar input, .toolbar select, .message-settings textarea, .timeline input",
     )) {
         control.disabled = active;
     }
@@ -253,6 +297,7 @@ async function saveFromForm() {
             soundEnabled: $("#soundEnabled").checked,
             notificationsEnabled: $("#notificationsEnabled").checked,
             alertLeadMinutes: Number($("#alertLeadMinutes").value) || 10,
+            customMessages: collectCustomMessages(),
         });
         render(state);
     } finally {
@@ -318,6 +363,10 @@ for (const selector of [
     "#alertLeadMinutes",
 ]) {
     $(selector).addEventListener("change", saveFromForm);
+}
+
+for (const field of document.querySelectorAll("[data-message-field]")) {
+    field.addEventListener("change", saveFromForm);
 }
 
 $("#city").addEventListener("change", saveFromForm);

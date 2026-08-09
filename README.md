@@ -4,6 +4,8 @@ NoorTime is a lightweight desktop salah timer for the macOS menu bar and Windows
 
 This project is open source and powered by Backpack.
 
+![NoorTime desktop app screenshot](./public/screenshots/screenshot-1.png)
+
 ## Platform Support
 
 | Platform | Status | Notes |

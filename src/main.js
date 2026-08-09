@@ -51,6 +51,15 @@ const LEGACY_PRAYER_RECORD_COLUMNS = [
     "updatedAt",
 ];
 
+const DEFAULT_CUSTOM_MESSAGES = {
+    greeting: "",
+    Fajr: "",
+    Dhuhr: "",
+    Asr: "",
+    Maghrib: "",
+    Isha: "",
+};
+
 const DEFAULT_SETTINGS = {
     city: "Kuala Lumpur",
     country: "Malaysia",
@@ -59,6 +68,7 @@ const DEFAULT_SETTINGS = {
     alertLeadMinutes: 10,
     soundEnabled: true,
     notificationsEnabled: true,
+    customMessages: { ...DEFAULT_CUSTOM_MESSAGES },
 };
 
 app.setName("NoorTime");
@@ -123,17 +133,28 @@ const settingsPath = () => path.join(app.getPath("userData"), "settings.json");
 const prayerRecordsPath = () =>
     path.join(app.getPath("userData"), "today-prayers.csv");
 
+function normalizeSettings(settings = {}) {
+    return {
+        ...DEFAULT_SETTINGS,
+        ...settings,
+        customMessages: {
+            ...DEFAULT_CUSTOM_MESSAGES,
+            ...(settings.customMessages || {}),
+        },
+    };
+}
+
 async function loadSettings() {
     try {
         const raw = await fs.readFile(settingsPath(), "utf8");
-        state.settings = { ...DEFAULT_SETTINGS, ...JSON.parse(raw) };
+        state.settings = normalizeSettings(JSON.parse(raw));
     } catch {
-        state.settings = { ...DEFAULT_SETTINGS };
+        state.settings = normalizeSettings();
     }
 }
 
 async function saveSettings(settings) {
-    state.settings = { ...DEFAULT_SETTINGS, ...settings };
+    state.settings = normalizeSettings(settings);
     await fs.mkdir(app.getPath("userData"), { recursive: true });
     await fs.writeFile(settingsPath(), JSON.stringify(state.settings, null, 2));
 }

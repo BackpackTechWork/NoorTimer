@@ -270,7 +270,8 @@ label span {
 }
 
 select,
-input {
+input,
+textarea {
   width: 100%;
   min-height: 32px;
   padding: 0 8px;
@@ -282,14 +283,23 @@ input {
   appearance: none;
 }
 
+textarea {
+  min-height: 54px;
+  padding: 8px;
+  line-height: 1.35;
+  resize: vertical;
+}
+
 select:focus,
-input:focus {
+input:focus,
+textarea:focus {
   border-color: var(--accent);
   box-shadow: 0 0 0 3px var(--focus);
 }
 
 select:disabled,
-input:disabled {
+input:disabled,
+textarea:disabled {
   opacity: 0.68;
 }
 
@@ -327,6 +337,26 @@ input:disabled {
 
 .lead input {
   min-height: 32px;
+}
+
+.message-settings {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  padding: 0 10px 10px;
+}
+
+.message-settings h3 {
+  grid-column: 1 / -1;
+  margin: 0;
+  color: var(--primary);
+  font-family: "Cinzel", "Cormorant Garamond", Georgia, serif;
+  font-size: 15px;
+  line-height: 1.1;
+}
+
+.message-settings label:first-of-type {
+  grid-column: 1 / -1;
 }
 
 .toolbar button,
