@@ -1,6 +1,6 @@
 {
     "name": "noortime-menubar",
-    "version": "1.0.0",
+    "version": "1.0.1",
     "description": "A desktop salah timer for the macOS menu bar and Windows system tray powered by AlAdhan.",
     "main": "src/main.js",
     "type": "commonjs",
